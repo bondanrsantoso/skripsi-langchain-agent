@@ -26,6 +26,8 @@
     "@nestjs/config": "^3.1.1",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
+    "@zilliz/milvus2-sdk-node": "^2.3.5",
+    "axios": "^1.6.5",
     "d3-dsv": "^2.0.0",
     "dotenv": "^16.3.1",
     "hnswlib-node": "^1.4.2",
@@ -34,7 +36,8 @@
     "officeparser": "^4.0.6",
     "pdf-parse": "^1.1.1",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.1",
@@ -79,8 +82,5 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
-  },
-  "overrides": {
-    "@langchain/core": "0.1.16"
   }
 }

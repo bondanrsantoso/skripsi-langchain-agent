@@ -32,6 +32,7 @@ import { CSVLoader } from 'langchain/document_loaders/fs/csv';
 import { JSONLoader } from 'langchain/document_loaders/fs/json';
 import { PPTXLoader } from 'langchain/document_loaders/fs/pptx';
 import { TextLoader } from 'langchain/document_loaders/fs/text';
+import { UnstructuredLoader } from 'langchain/document_loaders/fs/unstructured';
 import { DocumentLoader } from 'langchain/dist/document_loaders/base';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { JsonOutputParser } from '@langchain/core/output_parsers';
@@ -45,6 +46,9 @@ import { VectorStoreRetriever } from '@langchain/core/vectorstores';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { AgentExecutor, createOpenAIFunctionsAgent } from 'langchain/agents';
 import { createRetrieverTool } from 'langchain/tools/retriever';
+import * as fs from 'fs';
+import { IndexerService } from './indexer.service';
+import { formatDocumentsAsString } from 'langchain/util/document';
 
 const logger = new ConsoleLogger();
 
@@ -80,7 +84,10 @@ you are a helpful agent who will answer in JSON
 
 @Controller('indexer')
 export class IndexerController {
-  constructor(private documentParser: DocumentParserService) {}
+  constructor(
+    private documentParser: DocumentParserService,
+    private indexerService: IndexerService,
+  ) {}
 
   @Get()
   getIndexer(@Req() req: Request) {
@@ -106,6 +113,10 @@ export class IndexerController {
         parsedText = await this.documentParser.parseWord(file.path);
       } else if (mimeType === MIME_PPTX || mimeType === MIME_PDF) {
         parsedText = await this.documentParser.parseDocument(file.path);
+      } else if (
+        [MIME_CSV, MIME_JSON, MIME_HTML, MIME_XML, MIME_TXT].includes(mimeType)
+      ) {
+        parsedText = fs.readFileSync(file.path, { encoding: 'utf-8' });
       }
     } catch (error) {
       logger.error('Failed parsing document', error);
@@ -149,8 +160,8 @@ export class IndexerController {
     docs = await loader.load();
 
     const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 1000,
-      chunkOverlap: 200,
+      chunkSize: 3000,
+      chunkOverlap: 1500,
     });
 
     const splitDocs = await splitter.splitDocuments(docs);
@@ -161,10 +172,50 @@ export class IndexerController {
     };
   }
 
+  @Post('indexDocumentVector')
+  @UseInterceptors(
+    FileInterceptor('file', { dest: '.uploads/', preservePath: true }),
+  )
+  async parseDocumentUnstructured(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('board_id') boardId: number | null = null,
+    @Body('user_id') userId: number | null = null,
+  ) {
+    const targetFileName = file.path.substring(0, 5) + '-' + file.originalname;
+    fs.renameSync(file.path, targetFileName);
+    const loader = new UnstructuredLoader(targetFileName, {
+      apiUrl: process.env.UNSTRUCTURED_URL,
+    });
+
+    const docs = await loader.loadAndSplit();
+
+    const indexProcesses = [];
+    if (boardId) {
+      indexProcesses.push(
+        this.indexerService.createVectorStore(`board_${boardId}`, docs),
+      );
+    }
+    if (userId) {
+      indexProcesses.push(
+        this.indexerService.createVectorStore(`user_${userId}`, docs),
+      );
+    }
+
+    await Promise.allSettled(indexProcesses);
+
+    return { parsed_text: formatDocumentsAsString(docs), docs };
+  }
+
   @Post('extractContext')
-  async extractContext(@Body('text') text: string) {
+  async extractContext(
+    @Body('text') text: string,
+    @Body('source_filename') sourceFilename: string,
+    @Body('uploader') uploader: string,
+  ) {
     const prompt = ChatPromptTemplate.fromMessages([
       ['ai', documentIndexerSystemPrompt],
+      ['human', `source file name: ${sourceFilename}`],
+      ['human', `uploaded by: ${uploader || 'N/A'}`],
       ['human', '{instruction}'],
     ]);
 
