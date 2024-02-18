@@ -60,31 +60,12 @@ export class ChatController {
 
     promptTemplate.promptMessages.push(
       new SystemMessage(
-        'Your answer should be preferably in Bahasa Indonesia. English is only used as fallback',
-      ),
-    );
-
-    promptTemplate.promptMessages.push(
-      new SystemMessage(
-        'Always search a reference from stored context or notes first before coming up with your own answer',
-      ),
-    );
-
-    promptTemplate.promptMessages.push(
-      new SystemMessage(
-        'When using any references, cite the filename it belongs to',
-      ),
-    );
-
-    promptTemplate.promptMessages.push(
-      new SystemMessage(
-        'When answering wthout using any tool, put a disclaimer after the answer',
-      ),
-    );
-
-    promptTemplate.promptMessages.push(
-      new SystemMessage(
-        'important: always format the final answer in HTML format',
+        'Your answer should be preferably in Bahasa Indonesia. English is only used as fallback.' +
+          'Always search a reference using provided tools first before coming up with your own answer.' +
+          'When using any references, cite the filename it belongs to.' +
+          'When answering wthout using any tool, put a disclaimer after the answer.' +
+          'important: always format the final answer in HTML format.' +
+          'important: All tools are only available to be used for 5 times.',
       ),
     );
 
@@ -104,12 +85,12 @@ export class ChatController {
 
     const tools = [
       // this.chatService.contextSearchTool(boardId),
-      this.chatService.noteSearchTool(boardId),
+      // this.chatService.noteSearchTool(boardId),
     ];
 
     if (boardId) {
       tools.push(
-        await this.chatService.vectorSearchTool(
+        await this.chatService.vectorDirectSearchTool(
           `board_${boardId}`,
           'context-document-search-tool',
         ),
@@ -117,9 +98,9 @@ export class ChatController {
     }
     if (userId) {
       tools.push(
-        await this.chatService.vectorSearchTool(
-          `board_${boardId}`,
-          'context-document-search-tool',
+        await this.chatService.vectorDirectSearchTool(
+          `user_${userId}`,
+          'user-document-search-tool',
         ),
       );
     }
@@ -141,7 +122,7 @@ export class ChatController {
       agent,
       tools,
       returnIntermediateSteps: false,
-      maxIterations: 5,
+      maxIterations: 20,
     });
 
     const result = await agentExecutor.invoke(

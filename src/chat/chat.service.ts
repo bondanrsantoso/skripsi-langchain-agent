@@ -47,6 +47,54 @@ export class ChatService {
     });
   }
 
+  async vectorDirectSearchTool(
+    collectionName: string,
+    toolName = 'data-search-tool',
+  ) {
+    let vectorStore: VectorStore | null = null;
+    try {
+      const openAIEmbeddings = new OpenAIEmbeddings({
+        openAIApiKey: process.env.OPENAI_API_KEY,
+      });
+      vectorStore = await Milvus.fromExistingCollection(openAIEmbeddings, {
+        collectionName: collectionName,
+      });
+    } catch (error) {
+      logger.error('Unable to use Milvus vector store');
+      // vectorStore = await HNSWLib.fromTexts(['no data'], {}, openAIEmbeddings);
+    }
+
+    const chainTool = new DynamicTool({
+      name: toolName,
+      description:
+        'Data Search tool, most useful to retrieve facts and data from indexed documuents',
+      func: async (search) => {
+        if (vectorStore !== null) {
+          try {
+            const retriever = vectorStore.asRetriever();
+            const relevantDocs = await retriever.getRelevantDocuments(search);
+            let serialized = formatDocumentsAsString(relevantDocs);
+
+            const sourceFiles = relevantDocs.map(
+              (d) => d.metadata?.filename || '',
+            );
+            const uniqueSources = [...new Set(sourceFiles)];
+
+            serialized = serialized + '\nSources: ' + uniqueSources.join(',');
+            return serialized;
+          } catch (error) {
+            logger.error('Vector store error');
+
+            return "Can't seem to provide answer right now";
+          }
+        }
+        return 'Data search tool is unavailable';
+      },
+    });
+
+    return chainTool;
+  }
+
   async vectorSearchTool(
     collectionName: string,
     toolName = 'data-search-tool',

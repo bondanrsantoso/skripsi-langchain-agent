@@ -47,6 +47,7 @@ import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { AgentExecutor, createOpenAIFunctionsAgent } from 'langchain/agents';
 import { createRetrieverTool } from 'langchain/tools/retriever';
 import * as fs from 'fs';
+import * as path from 'path';
 import { IndexerService } from './indexer.service';
 import { formatDocumentsAsString } from 'langchain/util/document';
 
@@ -181,13 +182,15 @@ export class IndexerController {
     @Body('board_id') boardId: number | null = null,
     @Body('user_id') userId: number | null = null,
   ) {
-    const targetFileName = file.path.substring(0, 5) + '-' + file.originalname;
-    fs.renameSync(file.path, targetFileName);
-    const loader = new UnstructuredLoader(targetFileName, {
+    const targetPath = path.join(file.path, '..', file.originalname);
+    // const targetFileName = file.path.substring(0, 5) + '-' + file.originalname;
+    fs.renameSync(file.path, targetPath);
+    const loader = new UnstructuredLoader(targetPath, {
       apiUrl: process.env.UNSTRUCTURED_URL,
+      strategy: 'fast',
     });
 
-    const docs = await loader.loadAndSplit();
+    const docs = await loader.load();
 
     const indexProcesses = [];
     if (boardId) {
