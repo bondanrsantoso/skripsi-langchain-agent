@@ -2,8 +2,11 @@ import {
   Body,
   ConsoleLogger,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -179,6 +182,7 @@ export class IndexerController {
   )
   async parseDocumentUnstructured(
     @UploadedFile() file: Express.Multer.File,
+    @Body('file_id') fileId: number,
     @Body('board_id') boardId: number | null = null,
     @Body('user_id') userId: number | null = null,
   ) {
@@ -190,7 +194,16 @@ export class IndexerController {
       strategy: 'fast',
     });
 
-    const docs = await loader.load();
+    let docs = await loader.load();
+    docs = docs.map((d) => {
+      // inject file id into the metadata
+      if (!d.metadata) {
+        d.metadata = {};
+      }
+      d.metadata.file_id = fileId;
+
+      return d;
+    });
 
     const indexProcesses = [];
     if (boardId) {
@@ -247,5 +260,31 @@ export class IndexerController {
     );
 
     return llmResponse;
+  }
+
+  @Delete('removeIndex/:file_id')
+  async removeIndex(
+    @Param('file_id') fileId: number,
+    @Query('board_id') boardId: string | null = null,
+    @Query('user_id') userId: string | null = null,
+    @Req() req,
+  ) {
+    const indexProcesses = [];
+    if (boardId) {
+      indexProcesses.push(
+        this.indexerService.removeFileIndex(`board_${boardId}`, fileId),
+      );
+    }
+    if (userId) {
+      indexProcesses.push(
+        this.indexerService.removeFileIndex(`user_${userId}`, fileId),
+      );
+    }
+
+    await Promise.allSettled(indexProcesses);
+
+    return {
+      message: 'OK',
+    };
   }
 }
