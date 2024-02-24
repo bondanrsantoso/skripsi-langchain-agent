@@ -53,6 +53,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { IndexerService } from './indexer.service';
 import { formatDocumentsAsString } from 'langchain/util/document';
+import { MilvusClient } from '@zilliz/milvus2-sdk-node';
 
 const logger = new ConsoleLogger();
 
@@ -192,6 +193,7 @@ export class IndexerController {
     const loader = new UnstructuredLoader(targetPath, {
       apiUrl: process.env.UNSTRUCTURED_URL,
       strategy: 'fast',
+      xmlKeepTags: true,
     });
 
     let docs = await loader.load();
@@ -201,23 +203,28 @@ export class IndexerController {
         d.metadata = {};
       }
       d.metadata.file_id = fileId;
+      d.metadata.user_id = [userId];
 
       return d;
     });
 
-    const indexProcesses = [];
-    if (boardId) {
-      indexProcesses.push(
-        this.indexerService.createVectorStore(`board_${boardId}`, docs),
-      );
-    }
-    if (userId) {
-      indexProcesses.push(
-        this.indexerService.createVectorStore(`user_${userId}`, docs),
-      );
-    }
+    // const indexProcesses = [
+    //   this.indexerService.createVectorStore('artifacts', docs),
+    // ];
 
-    await Promise.allSettled(indexProcesses);
+    // if (boardId) {
+    //   indexProcesses.push(
+    //     this.indexerService.createVectorStore(`board_${boardId}`, docs),
+    //   );
+    // }
+    // if (userId) {
+    //   indexProcesses.push(
+    //     this.indexerService.createVectorStore(`user_${userId}`, docs),
+    //   );
+    // }
+
+    // await Promise.allSettled(indexProcesses);
+    await this.indexerService.createVectorStore('artifacts', docs);
 
     return { parsed_text: formatDocumentsAsString(docs), docs };
   }
@@ -286,5 +293,15 @@ export class IndexerController {
     return {
       message: 'OK',
     };
+  }
+
+  @Get('search')
+  async testSearch(@Query('q') searchQuery: string) {
+    const searchResult = await this.indexerService.searchFile(
+      'artifacts',
+      searchQuery,
+    );
+
+    return searchResult;
   }
 }

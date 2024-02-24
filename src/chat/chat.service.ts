@@ -13,6 +13,7 @@ import { formatDocumentsAsString } from 'langchain/util/document';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { HNSWLib } from '@langchain/community/vectorstores/hnswlib';
 import { VectorStore } from '@langchain/core/vectorstores';
+import { MilvusClient } from '@zilliz/milvus2-sdk-node';
 
 const logger = new Logger();
 
@@ -47,48 +48,70 @@ export class ChatService {
     });
   }
 
+  async releaseCollection(collectionName: string) {
+    const milvusURL = new URL(process.env.MILVUS_URL);
+    const milvusAddress = `${milvusURL.host}`;
+
+    const milvus = new MilvusClient({ address: milvusAddress });
+    return await milvus.releaseCollection({
+      collection_name: collectionName,
+    });
+  }
+
   async vectorDirectSearchTool(
     collectionName: string,
     toolName = 'data-search-tool',
   ) {
-    let vectorStore: VectorStore | null = null;
-    try {
-      const openAIEmbeddings = new OpenAIEmbeddings({
-        openAIApiKey: process.env.OPENAI_API_KEY,
-      });
-      vectorStore = await Milvus.fromExistingCollection(openAIEmbeddings, {
-        collectionName: collectionName,
-      });
-    } catch (error) {
-      logger.error('Unable to use Milvus vector store');
-      // vectorStore = await HNSWLib.fromTexts(['no data'], {}, openAIEmbeddings);
-    }
+    const openAIEmbeddings = new OpenAIEmbeddings({
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      modelName: 'text-embedding-3-large',
+    });
+
+    const milvusURL = new URL(process.env.MILVUS_URL);
+    const milvusAddress = `${milvusURL.host}`;
+
+    const milvus = new MilvusClient({ address: milvusAddress });
+    await milvus.loadCollection({
+      collection_name: collectionName,
+    });
 
     const chainTool = new DynamicTool({
       name: toolName,
       description:
         'Data Search tool, most useful to retrieve facts and data from indexed documuents',
       func: async (search) => {
-        if (vectorStore !== null) {
-          try {
-            const retriever = vectorStore.asRetriever();
-            const relevantDocs = await retriever.getRelevantDocuments(search);
-            let serialized = formatDocumentsAsString(relevantDocs);
+        try {
+          const vector = await openAIEmbeddings.embedQuery(search);
 
-            const sourceFiles = relevantDocs.map(
-              (d) => d.metadata?.filename || '',
-            );
-            const uniqueSources = [...new Set(sourceFiles)];
+          const includedCategories = ['NarrativeText', 'ListItem'];
 
-            serialized = serialized + '\nSources: ' + uniqueSources.join(',');
-            return serialized;
-          } catch (error) {
-            logger.error('Vector store error');
+          const searchResult = await milvus.search({
+            collection_name: collectionName,
+            vector,
+            filter: `category in ${JSON.stringify(includedCategories)}`,
+            limit: 10,
+          });
+
+          if (searchResult.status.code !== 0) {
+            logger.error('Vector search query error', searchResult);
 
             return "Can't seem to provide answer right now";
           }
+
+          const formatted = searchResult.results.map((r) => ({
+            content: r.langchain_text,
+            metadata: {
+              filename: r.filename,
+              page_number: r.page_number,
+            },
+          }));
+
+          return JSON.stringify(formatted);
+        } catch (error) {
+          logger.error('Vector store error');
+
+          return "Can't seem to provide answer right now";
         }
-        return 'Data search tool is unavailable';
       },
     });
 
@@ -107,6 +130,7 @@ export class ChatService {
     });
     const openAIEmbeddings = new OpenAIEmbeddings({
       openAIApiKey: process.env.OPENAI_API_KEY,
+      modelName: 'text-embedding-3-large',
     });
 
     let vectorStore: VectorStore | null = null;

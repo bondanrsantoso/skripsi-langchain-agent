@@ -61,49 +61,38 @@ export class ChatController {
     promptTemplate.promptMessages.push(
       new SystemMessage(
         'Your answer should be preferably in Bahasa Indonesia. English is only used as fallback.' +
-          'Always search a reference using provided tools first before coming up with your own answer.' +
-          'When using any references, cite the filename it belongs to.' +
+          'Always use document-search-tool to look up references before coming up with your answer.' +
+          'When using any references, cite the filename and page number it belongs to.' +
           'When answering wthout using any tool, put a disclaimer after the answer.' +
           'important: always format the final answer in HTML format.' +
           'important: All tools are only available to be used for 5 times.',
       ),
     );
 
-    // promptTemplate.promptMessages.push(
-    //   new SystemMessage(
-    //     'Tool inputs only accepts string and must be like {{ "search" : string}}',
-    //   ),
-    // );
-
-    // promptTemplate.promptMessages.push(
-    //   new SystemMessage('Tool inputs only accepts string'),
-    // );
-
-    // promptTemplate.promptMessages.push(
-    //   new SystemMessage('each tool should only be used at most 3 times'),
-    // );
-
     const tools = [
-      // this.chatService.contextSearchTool(boardId),
+      await this.chatService.vectorDirectSearchTool(
+        'artifacts',
+        'document-search-tool',
+      ),
       // this.chatService.noteSearchTool(boardId),
     ];
 
-    if (boardId) {
-      tools.push(
-        await this.chatService.vectorDirectSearchTool(
-          `board_${boardId}`,
-          'context-document-search-tool',
-        ),
-      );
-    }
-    if (userId) {
-      tools.push(
-        await this.chatService.vectorDirectSearchTool(
-          `user_${userId}`,
-          'user-document-search-tool',
-        ),
-      );
-    }
+    // if (boardId) {
+    //   tools.push(
+    //     await this.chatService.vectorDirectSearchTool(
+    //       `board_${boardId}`,
+    //       'context-document-search-tool',
+    //     ),
+    //   );
+    // }
+    // if (userId) {
+    //   tools.push(
+    //     await this.chatService.vectorDirectSearchTool(
+    //       `user_${userId}`,
+    //       'user-document-search-tool',
+    //     ),
+    //   );
+    // }
 
     const model = new ChatOpenAI({
       temperature: 0,
@@ -153,6 +142,7 @@ export class ChatController {
       },
     );
 
+    // await this.chatService.releaseCollection('artifacts');
     return result;
   }
 }
